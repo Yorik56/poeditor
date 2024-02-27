@@ -1,0 +1,4 @@
+services:
+  poeditor.controller:
+    class: Drupal\poeditor\Controller\PoeditorController
+    arguments: ['@pager.manager']

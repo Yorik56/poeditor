@@ -1,0 +1,4 @@
+administer site configuration:
+  title: 'Administer site configuration'
+  description: 'Perform administration tasks such as site configuration.'
+  restrict access: true

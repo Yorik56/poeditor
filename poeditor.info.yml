@@ -1,0 +1,8 @@
+name: 'PoEditor'
+type: module
+description: 'Module for editing translation files.'
+core_version_requirement: ^8 || ^9 || ^10
+package: Custom
+dependencies:
+  - drupal:file
+  - drupal:system

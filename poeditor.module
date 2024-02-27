@@ -1,0 +1,40 @@
+<?php
+
+use Drupal\Core\Routing\RouteBuilderInterface;
+
+/**
+ * Implements hook_help().
+ */
+function poeditor_help($route_name): string {
+  switch ($route_name) {
+    case 'help.page.poeditor':
+      $output = '';
+      // Add your help text here.
+      $output .= '<h3>' . t('About PoEditor Module') . '</h3>';
+      $output .= '<p>' . t('The PoEditor module allows users to edit translation files (*.po) directly within Drupal.') . '</p>';
+      $output .= '<h3>' . t('How to Use') . '</h3>';
+      $output .= '<p>' . t('1. Upload a translation file by clicking on "Upload Translation File" button.') . '</p>';
+      $output .= '<p>' . t('2. Once the file is uploaded, you can edit the translations.') . '</p>';
+      $output .= '<p>' . t('3. After making changes, click "Export" to generate a new translation file.') . '</p>';
+      return $output;
+
+    default:
+      return '';
+  }
+}
+
+/**
+ * Implements hook_theme().
+ */
+function poeditor_theme($existing, $type, $theme, $path) {
+  return [
+    'upload_and_filter_forms' => [
+      'variables' => [
+        'upload_form' => NULL,
+        'filter_form' => NULL,
+        'pager' => NULL, // Déclarer le pager comme une variable.
+      ],
+      'template' => 'upload-and-filter-forms',
+    ]
+  ];
+}

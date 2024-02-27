@@ -1,0 +1,15 @@
+poeditor.content:
+    path: '/admin/config/poeditor'
+    defaults:
+        _form: '\Drupal\poeditor\Form\PoeditorForm'
+        _title: 'PoEditor'
+    requirements:
+        _permission: 'access content'
+
+poeditor.upload_and_filter_forms:
+    path: '/admin/config/poeditor/upload-and-filter'
+    defaults:
+        _controller: '\Drupal\poeditor\Controller\PoeditorController::displayUploadAndFilterForms'
+        _title: 'Upload and Filter Translation Forms'
+    requirements:
+        _permission: 'access content'
