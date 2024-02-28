@@ -3,13 +3,50 @@
 namespace Drupal\poeditor\Form;
 
 use Drupal\Component\Utility\Environment;
+use Drupal\Core\Cache\Cache;
+use Drupal\Core\Cache\CacheBackendInterface;
+use Drupal\Core\Form\FormBase;
 use Drupal\Core\Form\FormStateInterface;
-use Drupal\locale\Form\TranslateFormBase;
+use Drupal\Core\Language\LanguageManagerInterface;
+use Drupal\Core\Pager\PagerManagerInterface;
+use Symfony\Component\DependencyInjection\ContainerInterface;
 
 /**
- * Form for uploading the translation file.
+ * UploadForm class.
  */
-class UploadForm extends TranslateFormBase {
+class UploadForm extends FormBase {
+
+  protected $languageManager;
+  protected $pagerManager;
+  protected $cacheBackend;
+
+  /**
+   * Constructs an UploadForm object.
+   *
+   * @param \Drupal\Core\Language\LanguageManagerInterface $language_manager
+   *   The language manager service.
+   * @param \Drupal\Core\Pager\PagerManagerInterface $pager_manager
+   *   The pager manager service.
+   * @param \Drupal\Core\Cache\CacheBackendInterface $cache_backend
+   *   The cache backend service.
+   */
+  public function __construct(LanguageManagerInterface $language_manager, PagerManagerInterface $pager_manager, CacheBackendInterface $cache_backend) {
+    $this->languageManager = $language_manager;
+    $this->pagerManager = $pager_manager;
+    $this->cacheBackend = $cache_backend;
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public static function create(ContainerInterface $container) {
+    // Utilisation de la méthode create() pour l'injection de dépendances.
+    return new static(
+      $container->get('language_manager'),
+      $container->get('pager.manager'),
+      $container->get('cache.default')
+    );
+  }
 
   /**
    * {@inheritdoc}
@@ -22,14 +59,14 @@ class UploadForm extends TranslateFormBase {
    * {@inheritdoc}
    */
   public function buildForm(array $form, FormStateInterface $form_state) {
-    // Call parent buildForm to initialize messages.
-
+    // Utilisation de la traduction dans la méthode buildForm().
     $form['upload_file_fieldset'] = [
       '#type' => 'fieldset',
       '#title' => $this->t('Upload Translation File'),
       '#attributes' => ['class' => ['upload-file-container']],
     ];
 
+    // Utilisation de Environment::getUploadMaxSize() pour obtenir la taille maximale de téléchargement.
     $validators = [
       'file_validate_extensions' => ['po'],
       'file_validate_size' => [Environment::getUploadMaxSize()],
@@ -55,73 +92,45 @@ class UploadForm extends TranslateFormBase {
     ];
 
     // Paginate messages.
-    $messages = $form_state->getValue('messages', []);
-    $page = $form_state->get('page') ?? 0;
-    $chunked_messages = array_chunk($messages, 30); // Paginate with 30 items per page.
-    $page_messages = $chunked_messages[$page] ?? [];
+    $messages = $this->getMessagesFromCache($form_state);
+    $request = \Drupal::request();
+    $page = $request->query->getInt('page', 0); // Obtention de la valeur de "page" à partir de l'URL.
+    $limit = 10; // Changement de la limite à 10.
+    $total = count($messages); // Nombre total de messages.
+    $pager = $this->pagerManager->createPager($total, $limit);
+    $pager->setCurrentPage($page);
 
-    $filter_values = $this->translateFilterValues();
-    $langcode = $filter_values['langcode'];
+    // Obtention des messages de la page actuelle.
+    $offset = $pager->getCurrentPage() * $limit;
+    $current_page_messages = array_slice($messages, $offset, $limit);
 
-    $this->languageManager->reset();
-    $languages = $this->languageManager->getLanguages();
-
-    $langname = isset($langcode) ? $languages[$langcode]->getName() : "- None -";
-
-    $form['#attached']['library'][] = 'locale/drupal.locale.admin';
-
-    $form['langcode'] = [
-      '#type' => 'value',
-      '#value' => $filter_values['langcode'],
-    ];
-
-    // Add messages table.
+    // Construction de la table pour les messages.
     $form['messages_table'] = [
       '#type' => 'table',
-      '#tree' => TRUE,
-      '#language' => $langname,
       '#header' => [
         $this->t('Source string'),
-        $this->t('Translation for @language', ['@language' => $langname]),
+        $this->t('Translation'),
       ],
       '#empty' => $this->t('No strings available.'),
       '#attributes' => ['class' => ['locale-translate-edit-table']],
     ];
 
-    // Populate messages table with messages for the current page.
-    foreach ($page_messages as $msgid => $msgstr) {
-      $form['messages_table'][$msgid] = [
-        'msgid' => ['#plain_text' => $msgid],
-        'msgstr' => [
-          '#type' => 'textfield',
-          '#default_value' => $msgstr,
-        ],
+    // Remplissage de la table des messages avec les messages de la page actuelle.
+    foreach ($current_page_messages as $msgid => $msgstr) {
+      $form['messages_table'][$msgid]['msgid'] = [
+        '#type' => 'markup',
+        '#markup' => $msgid,
+      ];
+      $form['messages_table'][$msgid]['msgstr'] = [
+        '#type' => 'textfield',
+        '#default_value' => $msgstr,
       ];
     }
 
+    // Ajout de la pagination.
     $form['pager'] = [
       '#type' => 'pager',
-      '#wrapper_attributes' => ['class' => ['pager']],
-      '#attributes' => ['role' => 'navigation', 'aria-labelledby' => 'pagination-heading'],
-      '#heading' => [
-        '#type' => 'html_tag',
-        '#tag' => 'h4',
-        '#value' => $this->t('Pagination'),
-        '#attributes' => ['class' => ['visually-hidden'], 'id' => 'pagination-heading'],
-      ],
     ];
-
-    $form['pager']['#prefix'] = '<nav class="pager" role="navigation" aria-labelledby="pagination-heading">';
-    $form['pager']['#suffix'] = '</nav>';
-
-    // Add your custom pager items here.
-    // For example, you can loop through the pages and create the corresponding links.
-    $pages = range(1, 10); // Example range of pages.
-    foreach ($pages as $page_number) {
-      $class = ($page_number == 5) ? 'is-active' : ''; // Example active class.
-      $link_text = ($page_number == 5) ? 'Page courante' : $page_number; // Example link text.
-      $form['pager']['#markup'] .= '<a href="?page=' . $page_number . '" title="Go to page ' . $page_number . '" class="pager__link pager__link--number ' . $class . '"><span class="visually-hidden">Page</span>' . $link_text . '</a>';
-    }
 
     return $form;
   }
@@ -130,10 +139,10 @@ class UploadForm extends TranslateFormBase {
    * {@inheritdoc}
    */
   public function validateForm(array &$form, FormStateInterface $form_state) {
-    // Call parent validateForm for additional validation.
+    // Validation supplémentaire.
     parent::validateForm($form, $form_state);
 
-    // Validate file upload...
+    // Validation du téléchargement de fichier...
     $file = $form_state->getValue('translation_file');
     if (!$file) {
       $form_state->setErrorByName('translation_file', $this->t('No file uploaded.'));
@@ -154,9 +163,25 @@ class UploadForm extends TranslateFormBase {
     $file_contents = file_get_contents($this->file->getFileUri());
 
     $messages = $this->parsePoFile($file_contents);
-    // Save messages into form state.
-    $form_state->setValue('messages', $messages);
+    // Enregistrer les messages dans le cache.
+    $this->cacheBackend->set('poeditor_messages', $messages, Cache::PERMANENT, ['poeditor']);
+    // Définir la page sur 0 pour revenir à la première page.
+    $form_state->setValue('page', 0);
     $form_state->setRebuild();
+  }
+
+  /**
+   * Get messages from cache.
+   *
+   * @param \Drupal\Core\Form\FormStateInterface $form_state
+   *   The form state.
+   *
+   * @return array
+   *   The messages array.
+   */
+  protected function getMessagesFromCache(FormStateInterface $form_state) {
+    $cache = $this->cacheBackend->get('poeditor_messages');
+    return $cache ? $cache->data : [];
   }
 
   /**
@@ -170,6 +195,7 @@ class UploadForm extends TranslateFormBase {
    */
   protected function parsePoFile($content) {
     $messages = [];
+    // Utilisation de preg_match_all() pour extraire les paires msgid et msgstr.
     preg_match_all('/msgid "(.*)"\nmsgstr "(.*)"\n/', $content, $matches, PREG_SET_ORDER);
     foreach ($matches as $match) {
       $msgid = $match[1];

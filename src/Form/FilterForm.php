@@ -67,9 +67,9 @@ class FilterForm extends FormBase {
         // For example, you might want to ensure that the search field is not empty.
         $values = $form_state->getValues();
         $search_query = $values['search'];
-        if (empty($search_query)) {
-            $form_state->setErrorByName('search', $this->t('The search field cannot be empty.'));
-        }
+//        if (empty($search_query)) {
+//            $form_state->setErrorByName('search', $this->t('The search field cannot be empty.'));
+//        }
     }
 
     /**
