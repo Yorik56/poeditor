@@ -31,9 +31,7 @@ function poeditor_theme($existing, $type, $theme, $path) {
     'upload_and_filter_forms' => [
       'variables' => [
         'upload_form' => NULL,
-        'filter_form' => NULL,
-//        'fruit_form' => NULL,
-//        'pager' => NULL, // Déclarer le pager comme une variable.
+        'filter_form' => NULL
       ],
       'template' => 'upload-and-filter-forms',
     ]

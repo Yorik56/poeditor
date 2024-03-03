@@ -2,36 +2,73 @@
 
 namespace Drupal\poeditor\Form;
 
+use Drupal\Core\Cache\CacheBackendInterface;
 use Drupal\Core\Form\FormBase;
 use Drupal\Core\Form\FormStateInterface;
+use Drupal\Core\Cache\Cache;
+use Symfony\Component\DependencyInjection\ContainerInterface;
 
 /**
- * Form for filtering and displaying translation content.
+ * FilterForm class.
+ *
+ * Defines a form for filtering and searching content.
  */
 class FilterForm extends FormBase {
+
+    protected CacheBackendInterface $cacheBackend;
+
+    /**
+     * Constructs a FilterForm object.
+     *
+     * @param \Drupal\Core\Cache\CacheBackendInterface $cache_backend
+     *   The cache backend service.
+     */
+    public function __construct(CacheBackendInterface $cache_backend) {
+        $this->cacheBackend = $cache_backend;
+    }
 
     /**
      * {@inheritdoc}
      */
-    public function getFormId() {
+    public static function create(ContainerInterface $container): FilterForm {
+        // Use the create() method for dependency injection.
+        return new static(
+            $container->get('cache.default')
+        );
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function getFormId(): string {
         return 'poeditor_filter_form';
     }
 
     /**
      * {@inheritdoc}
      */
-    public function buildForm(array $form, FormStateInterface $form_state) {
+    public function buildForm(array $form, FormStateInterface $form_state): array {
+        // Retrieve filtered values from cache.
+        $cached_values = $this->cacheBackend->get('poeditor_filtered_values')->data ?? [];
+
+        // Set default values for search and filter fields based on cached values.
+        $default_search = $cached_values['search'] ?? '';
+        $default_filter = $cached_values['filter'] ?? 'all';
+
         // Build filter form.
         $form['filter_fieldset'] = [
-            '#type' => 'fieldset',
+            '#type' => 'details',
             '#title' => $this->t('Filters and Search'),
             '#attributes' => ['class' => ['filter-container']],
+            '#open' => TRUE
         ];
+
         // Add the search field.
         $form['filter_fieldset']['search'] = [
             '#type' => 'textfield',
             '#title' => $this->t('Search'),
             '#placeholder' => $this->t('Search by msgid or msgstr'),
+            '#default_value' => $default_search, // Set default value
         ];
 
         // Add the select field to filter by msgid.
@@ -43,7 +80,21 @@ class FilterForm extends FormBase {
                 'translated' => $this->t('Translated'),
                 'untranslated' => $this->t('Untranslated'),
             ],
-            '#default_value' => 'all',
+            '#default_value' => $default_filter, // Set default value
+        ];
+
+        // Add the "Results per page" field.
+        $form['filter_fieldset']['results_per_page'] = [
+            '#type' => 'select',
+            '#title' => $this->t('Results per page'),
+            '#options' => [
+                10 => $this->t('10'),
+                20 => $this->t('20'),
+                30 => $this->t('30'),
+                50 => $this->t('50'),
+                100 => $this->t('100'),
+            ],
+            '#default_value' => $cached_values['results_per_page'] ?? 10, // Set default value
         ];
 
         // Add the submit button for filtering.
@@ -52,8 +103,15 @@ class FilterForm extends FormBase {
             '#value' => $this->t('Filter'),
         ];
 
-        // Add the submission callback for the filter form.
-        $form['#submit'][] = '::filterSubmit';
+        // Add the "Reset" button.
+        $form['filter_fieldset']['reset_filter'] = [
+            '#type' => 'submit',
+            '#value' => $this->t('Reset'),
+            '#submit' => ['::resetFilter'], // Define a custom submit handler
+        ];
+
+        // Set the complete form state in the form render array.
+        $form['#form_state'] = $form_state;
 
         return $form;
     }
@@ -62,61 +120,45 @@ class FilterForm extends FormBase {
      * {@inheritdoc}
      */
     public function validateForm(array &$form, FormStateInterface $form_state) {
-        // Validate filter form...
-        // You can add validation logic here if needed.
-        // For example, you might want to ensure that the search field is not empty.
-        $values = $form_state->getValues();
-        $search_query = $values['search'];
-//        if (empty($search_query)) {
-//            $form_state->setErrorByName('search', $this->t('The search field cannot be empty.'));
-//        }
+        // Validate search field.
+        $search = $form_state->getValue('search');
+        // Use Drupal's validation method to sanitize submitted data.
+        $search = \Drupal\Component\Utility\Xss::filter($search);
+        if (strlen($search) > 255) {
+            $form_state->setErrorByName('search', $this->t('Search value must be less than 255 characters.'));
+        }
+
+        // Validate filter field.
+        $filter = $form_state->getValue('filter');
+        $allowed_filters = ['all', 'translated', 'untranslated'];
+        if (!in_array($filter, $allowed_filters)) {
+            $form_state->setErrorByName('filter', $this->t('Invalid filter value.'));
+        }
     }
 
     /**
      * {@inheritdoc}
      */
     public function submitForm(array &$form, FormStateInterface $form_state) {
-        // Handle filter form submission...
-        // You can add your logic here to process the submitted values.
-        // For example, you might want to retrieve the filter values and perform actions based on them.
-        $values = $form_state->getValues();
-        $search_query = $values['search'];
-        $filter_option = $values['filter'];
+        // Get the filtered values from the form submission.
+        $filtered_values = [
+            'search' => $form_state->getValue('search'),
+            'filter' => $form_state->getValue('filter'),
+            'results_per_page' => $form_state->getValue('results_per_page'),
+        ];
 
-        // Perform actions based on the submitted values, such as filtering the translation content, etc.
+        // Store the filtered values in the cache.
+        $this->cacheBackend->set('poeditor_filtered_values', $filtered_values, Cache::PERMANENT, ['poeditor']);
     }
 
     /**
-     * Submission callback for the filter form.
+     * Custom submit handler for the "Reset" button.
      */
-    public function filterSubmit(array &$form, FormStateInterface $form_state) {
-        // This function is called when the filter form is submitted.
-        // You can use it to perform specific actions when the form is submitted.
-        // For example, you might want to process the form values here.
+    public function resetFilter(array &$form, FormStateInterface $form_state) {
+        // Clear the cached filtered values.
+        $this->cacheBackend->delete('poeditor_filtered_values');
 
-        // Retrieve the value of the filter selection field.
-        $filter_value = $form_state->getValue('filter');
-
-        // Perform actions based on the selected filter value.
-        // You can customize this part based on your requirements.
-        switch ($filter_value) {
-            case 'all':
-                // If 'All' is selected, you might want to display all translation content.
-                // Add your logic here...
-                break;
-            case 'translated':
-                // If 'Translated' is selected, you might want to display only translated content.
-                // Add your logic here...
-                break;
-            case 'untranslated':
-                // If 'Untranslated' is selected, you might want to display only untranslated content.
-                // Add your logic here...
-                break;
-            default:
-                // Handle default case.
-                break;
-        }
+        // Redirect back to the current page.
+        $form_state->setRedirect('<current>');
     }
-
-
 }
